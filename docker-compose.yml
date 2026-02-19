@@ -1,70 +1,262 @@
 version: '3.8'
 
+# ─── Bases reutilizáveis ────────────────────────────────────────────────────
+x-service-base: &service-base
+  restart: unless-stopped
+  networks:
+    - intime-network
+
+# Base para microserviços que dependem de PostgreSQL + Redis
+x-backend-base: &backend-base
+  <<: *service-base
+  env_file:
+    - ./server/.env
+  environment:
+    # Sobrescreve o .env: aponta para os containers internos com o usuário dedicado
+    - DB_HOST=postgres
+    - DB_PORT=5432
+    - DB_NAME=intime_dev
+    - DB_USER=intime_admin
+    - DB_PASSWORD=${INTIME_DB_PASSWORD:-intime_Change_Me_2025!}
+    - REDIS_HOST=redis
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+# ─── Serviços ───────────────────────────────────────────────────────────────
 services:
-  # Databases
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # BANCOS DE DADOS
+  # ══════════════════════════════════════════════════════════════════════════
+
   postgres:
+    <<: *service-base
     image: postgres:14-alpine
     container_name: intime-postgres
     environment:
       POSTGRES_DB: intime_dev
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Usuário dedicado – NÃO use 'postgres'. Troque a senha antes de ir para produção.
+      POSTGRES_USER: intime_admin
+      POSTGRES_PASSWORD: ${INTIME_DB_PASSWORD:-intime_Change_Me_2025!}
     ports:
-      - "5432:5432"
+      - "5433:5432"           # Acesso externo restrito a este host (PgAdmin/psql)
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - intime-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intime_admin -d intime_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   mongodb:
+    <<: *service-base
     image: mongo:6
     container_name: intime-mongodb
+    environment:
+      MONGO_INITDB_DATABASE: intime_audit
     ports:
-      - "27017:27017"
+      - "27017:27017"         # Exposto para acesso direto (Compass, mongosh)
     volumes:
       - mongodb_data:/data/db
-    networks:
-      - intime-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   redis:
+    <<: *service-base
     image: redis:7-alpine
     container_name: intime-redis
+    command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
-    networks:
-      - intime-network
+      - "6379:6379"           # Exposto para acesso direto (redis-cli, RedisInsight)
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  # API Gateway
+  # ══════════════════════════════════════════════════════════════════════════
+  # API GATEWAY  (porta interna: 3000)
+  # ══════════════════════════════════════════════════════════════════════════
+
   api-gateway:
-    build: ./server/api-gateway
+    <<: *service-base
+    build:
+      context: ./server
+      dockerfile: api-gateway/Dockerfile
     container_name: intime-api-gateway
-    ports:
-      - "3000:3000"
     env_file:
       - ./server/.env
+    environment:
+      - REDIS_HOST=redis
+      # URLs internas dos microserviços (sobrescrevem o .env que usa localhost)
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_SERVICE_URL=http://user-service:3002
+      - PROJECT_SERVICE_URL=http://project-service:3003
+      - TIMESHEET_SERVICE_URL=http://timesheet-service:3004
+      - ALLOCATION_SERVICE_URL=http://allocation-service:3005
+      - CONTRACT_SERVICE_URL=http://contract-service:3006
+      - FINANCIAL_SERVICE_URL=http://financial-service:3007
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3008
+      - EXPORT_SERVICE_URL=http://export-service:3009
+      - AUDIT_SERVICE_URL=http://audit-service:3010
     depends_on:
-      - redis
-    networks:
-      - intime-network
+      redis:
+        condition: service_healthy
 
-  # Auth Service
+  # ══════════════════════════════════════════════════════════════════════════
+  # MICROSERVIÇOS
+  # Todos usam build context ./server para acessar shared/
+  # DB_HOST e REDIS_HOST sobrescrevem o .env (que usa IPs externos)
+  # ══════════════════════════════════════════════════════════════════════════
+
   auth-service:
-    build: ./server/services/auth-service
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/auth-service/Dockerfile
     container_name: intime-auth-service
-    ports:
-      - "3001:3001"
+
+  user-service:
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/user-service/Dockerfile
+    container_name: intime-user-service
+
+  project-service:
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/project-service/Dockerfile
+    container_name: intime-project-service
+
+  timesheet-service:
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/timesheet-service/Dockerfile
+    container_name: intime-timesheet-service
+
+  allocation-service:
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/allocation-service/Dockerfile
+    container_name: intime-allocation-service
+
+  contract-service:
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/contract-service/Dockerfile
+    container_name: intime-contract-service
+
+  financial-service:
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/financial-service/Dockerfile
+    container_name: intime-financial-service
+    environment:
+      # Herda x-backend-base + sobrescreve pool para cálculos EVM
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=intime_dev
+      - DB_USER=intime_admin
+      - DB_PASSWORD=${INTIME_DB_PASSWORD:-intime_Change_Me_2025!}
+      - REDIS_HOST=redis
+      - DB_POOL_MAX=10
+      - DB_POOL_MIN=2
+
+  notification-service:
+    <<: *service-base
+    build:
+      context: ./server
+      dockerfile: services/notification-service/Dockerfile
+    container_name: intime-notification-service
     env_file:
       - ./server/.env
+    environment:
+      - REDIS_HOST=redis
     depends_on:
-      - postgres
-      - redis
-    networks:
-      - intime-network
+      redis:
+        condition: service_healthy
 
+  export-service:
+    <<: *backend-base
+    build:
+      context: ./server
+      dockerfile: services/export-service/Dockerfile
+    container_name: intime-export-service
+
+  audit-service:
+    <<: *service-base
+    build:
+      context: ./server
+      dockerfile: services/audit-service/Dockerfile
+    container_name: intime-audit-service
+    env_file:
+      - ./server/.env
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/intime_audit
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # FRONTEND  (React SPA servido por Nginx interno)
+  # ══════════════════════════════════════════════════════════════════════════
+
+  client:
+    <<: *service-base
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1        # Relativo – o Nginx faz o proxy
+        VITE_SOCKET_URL: ""          # Socket.io via /socket.io/ no Nginx
+    container_name: intime-client
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # NGINX  – Ponto de entrada único (porta 8500)
+  # Porta 80 ocupada por hub-pmo-frontend na VM
+  #
+  #  /            → client:80          (React SPA)
+  #  /api/        → api-gateway:3000   (REST API)
+  #  /socket.io/  → notification:3008  (WebSocket)
+  # ══════════════════════════════════════════════════════════════════════════
+
+  nginx:
+    <<: *service-base
+    image: nginx:1.24-alpine
+    container_name: intime-nginx
+    ports:
+      - "8500:80"             # http://<VM_IP>:8500
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - client
+      - api-gateway
+      - notification-service
+
+# ─── Volumes ────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
   mongodb_data:
+  redis_data:
 
+# ─── Rede ───────────────────────────────────────────────────────────────────
 networks:
   intime-network:
     driver: bridge

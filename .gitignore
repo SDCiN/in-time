@@ -33,3 +33,10 @@ coverage/
 
 # Docker
 docker-compose.override.yml
+
+*.md
+*.bat
+.claude/
+
+
+
