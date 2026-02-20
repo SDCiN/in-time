@@ -5,11 +5,11 @@ FROM node:18-alpine
 # mas incluímos shared para uso futuro (AppError, logger, etc.)
 
 COPY shared/package*.json /app/shared/
-RUN cd /app/shared && npm ci --only=production
+RUN cd /app/shared && npm install --omit=dev
 
 WORKDIR /app/services/audit-service
 COPY services/audit-service/package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 COPY shared/ /app/shared/
 COPY services/audit-service/ .

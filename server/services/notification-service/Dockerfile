@@ -4,11 +4,11 @@ FROM node:18-alpine
 # notification-service usa Socket.io + Redis Pub/Sub (não depende de shared/Sequelize)
 
 COPY shared/package*.json /app/shared/
-RUN cd /app/shared && npm ci --only=production
+RUN cd /app/shared && npm install --omit=dev
 
 WORKDIR /app/services/notification-service
 COPY services/notification-service/package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 COPY shared/ /app/shared/
 COPY services/notification-service/ .

@@ -5,12 +5,12 @@ FROM node:18-alpine
 
 # 1. Dependências do shared
 COPY shared/package*.json /app/shared/
-RUN cd /app/shared && npm ci --only=production
+RUN cd /app/shared && npm install --omit=dev
 
 # 2. Dependências do serviço
 WORKDIR /app/services/auth-service
 COPY services/auth-service/package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # 3. Código-fonte
 COPY shared/ /app/shared/
