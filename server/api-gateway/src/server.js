@@ -7,7 +7,6 @@ import { rateLimitMiddleware } from './middlewares/rateLimit.js'
 import { setupRoutes } from './routes/index.js'
 import logger from './config/logger.js'
 
-const app = express()
 dotenv.config({ path: '../.env' })
 
 const app = express()
