@@ -15,7 +15,7 @@ A VM já hospeda outros projetos Docker em execução. As portas a seguir estão
 | 4444 | selenium |
 | 5000 | worklocation-api |
 | 5050 | pgadmin (worklocation) |
-| **5432** | **worklocation-db (PostgreSQL 16)** ← não confundir com o do iN!Time |
+| **5432** | **worklocation-db (PostgreSQL 16)** ← ambos projetos agora usam PG 16 |
 | 7000 | hub-pmo-backend |
 | 7001 | hub-pmo-frontend |
 | 8070 | sandash-backend |
@@ -55,7 +55,7 @@ VM HOST (192.168.1.71)
 ├── :5432 ──→ worklocation-db (postgres:16)   [worklocation-network]
 │                └── usuário: worklocation_user
 │
-└── :5433 ──→ intime-postgres (postgres:14)   [intime-network]  ← INSTÂNCIA SEPARADA
+└── :5433 ──→ intime-postgres (postgres:16)   [intime-network]  ← INSTÂNCIA SEPARADA
                   ├── usuário: intime_admin
                   ├── banco:   intime_dev
                   └── acessível APENAS por containers da intime-network
@@ -107,9 +107,9 @@ Usuário (browser)
 | intime-notification-service | build ./server (services/notification-service/) | 3008 | apenas via nginx |
 | intime-export-service | build ./server (services/export-service/) | 3009 | apenas via nginx |
 | intime-audit-service | build ./server (services/audit-service/) | 3010 | apenas via nginx |
-| intime-postgres | postgres:14-alpine | 5432 | **:5433** |
-| intime-mongodb | mongo:6 | 27017 | **:27017** |
-| intime-redis | redis:7-alpine | 6379 | **:6379** |
+| intime-postgres | postgres:16-alpine | 5432 | **:5433** |
+| intime-mongodb | mongo:7.0 | 27017 | **:27017** |
+| intime-redis | redis:7.4-alpine | 6379 | **:6379** |
 
 ---
 

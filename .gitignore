@@ -37,6 +37,8 @@ docker-compose.override.yml
 *.md
 *.bat
 .claude/
+*.sh
+*.ps1
 
 
 

@@ -46,11 +46,11 @@ intime/
 
 ### Pré-requisitos
 
-- Node.js 18 LTS
+- Node.js 20 LTS
 - Docker & Docker Compose
-- PostgreSQL 14
-- MongoDB 6
-- Redis 7
+- PostgreSQL 16 (provisionado via Docker)
+- MongoDB 7.0 (provisionado via Docker)
+- Redis 7.4 (provisionado via Docker)
 
 ### Instalação
 
@@ -203,11 +203,12 @@ docker-compose ps                 # Status dos containers
 - Socket.io Client
 
 ### Backend
-- Node.js 18 LTS
-- Express.js 4
-- Sequelize 6 (PostgreSQL ORM)
-- Mongoose 7 (MongoDB ODM)
-- Redis 7
+- Node.js 20 LTS
+- Express.js 4.21
+- Sequelize 6.37.7 (PostgreSQL ORM)
+- Mongoose 8.9 (MongoDB ODM)
+- Redis client 4.7
+- Redis 7.4
 - JWT (jsonwebtoken)
 - bcryptjs
 - Winston (logging)

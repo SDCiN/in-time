@@ -7,9 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **iN!Time** is an enterprise project management system focused on resource management (allocation, timesheets, rate cards), financial management (EVM - Earned Value Management, forecasting, budget tracking), portfolio management, and advanced analytics.
 
 **Architecture Type**: Client-Server with MVC + Middlewares + Microservices
-- **Frontend (Client)**: React 18 with JavaScript (NOT TypeScript) — SPA in `client/` directory
-- **Backend (Server)**: Node.js with JavaScript (NOT TypeScript) — microservices in `server/` directory
+- **Frontend (Client)**: React 19.2 with JavaScript (NOT TypeScript) — SPA in `client/` directory
+- **Backend (Server)**: Node.js 18 LTS with JavaScript (NOT TypeScript) — microservices in `server/` directory
 - **Language**: All code in JavaScript; documentation and UI text in Portuguese (pt-BR)
+- **Deployment**: Docker Compose with isolated network, Nginx reverse proxy on port 8500
 
 ## Directory Structure
 
@@ -201,57 +202,85 @@ Schema definition, validations, associations
 
 ## Technology Stack
 
-**Frontend**: React 19.2 + Vite 7, React Router 6, React Query 5 (server state), Zustand 4 (client state), shadcn/ui + Radix UI, Tailwind CSS 3, React Hook Form + Zod, Recharts + D3.js, Axios, Socket.io Client
+**Frontend**: React 19.2 + Vite 7 (dependencies: react-dom only — NOT yet installed: router, query, zustand, shadcn, axios, etc.)
 
-**Backend**: Node.js 18 LTS, Express.js 4.21, Sequelize 6.37 (PostgreSQL), Mongoose 7 (MongoDB), PM2 5, jsonwebtoken 9, bcryptjs 2, helmet 8, cors 2, express-rate-limit 7, Joi 17, Socket.io 4, Bull 4, Winston 3, prom-client 15
+**Backend**: Node.js 20 LTS, Express.js 4.21, Sequelize 6.37.7 (PostgreSQL), Mongoose 8.9 (MongoDB), redis client 4.7, jsonwebtoken 9, bcryptjs 2, helmet 8.2, cors 2, express-rate-limit 7, Joi 17, Socket.io 4.8, Bull 4.16, Winston 3.19
 
-**Databases**: PostgreSQL 14 (transactional data), MongoDB 6 (audit logs, notifications, exports), Redis 7 (cache, sessions, pub/sub, queues, token blacklist)
+**Databases**:
+- PostgreSQL 16 (transactional data) — dedicated instance `intime-postgres` on port 5433, user `intime_admin`, database `intime_dev`
+- MongoDB 7.0 (audit logs) — port 27017
+- Redis 7.4 (cache, sessions, pub/sub, queues) — port 6379
 
-**Infrastructure**: Nginx 1.24+ (reverse proxy), Docker 24, Kubernetes 1.28+ (production optional), Prometheus + Grafana (monitoring), Loki + Promtail (logging), GitHub Actions (CI/CD)
+**Infrastructure**:
+- Nginx 1.24-alpine (reverse proxy on port 8500) — entry point for http://interno.sandech.local:8500/intime/
+- Docker 24 + Docker Compose v3.8
+- Isolated `intime-network` (bridge) — no cross-project access
+- All microservices are internal-only (no host port exposure except via Nginx)
 
 ## Development Commands
+
+### Docker (Recommended for Production-like Environment)
+```bash
+# Start all services (from project root)
+docker compose up -d --build
+
+# View logs (all services)
+docker compose logs -f
+
+# View logs (specific service)
+docker compose logs -f auth-service
+
+# Rebuild specific service
+docker compose up -d --build auth-service
+
+# Stop all services
+docker compose down
+
+# Stop and remove volumes (WARNING: deletes database data)
+docker compose down -v
+
+# Check service status
+docker compose ps
+
+# Access PostgreSQL
+docker exec -it intime-postgres psql -U intime_admin -d intime_dev
+```
 
 ### Frontend (client/)
 ```bash
 cd client/
 npm install
-npm run dev           # Vite dev server (HMR)
-npm run build         # Production build
+npm run dev           # Vite dev server on http://localhost:5173
+npm run build         # Production build to dist/
 npm run preview       # Preview production build
 npm run lint          # ESLint check
 ```
 
-### Backend (server/)
+### Backend - Manual Development (without Docker)
 ```bash
-# Start all services with Docker Compose
-docker-compose up -d
+# Prerequisites: PostgreSQL, MongoDB, Redis running locally or on VM
 
-# Start specific service
-docker-compose up -d auth-service
-
-# Without Docker (manual)
-cd server/services/auth-service
+# API Gateway
+cd server/api-gateway/
 npm install
-npm run dev           # nodemon for auto-reload
+npm run dev           # nodemon on port 3000
+
+# Auth Service (example)
+cd server/services/auth-service/
+npm install
+npm run dev           # nodemon on port 3001
 npm start             # production mode
-
-# Run tests
-npm test                           # All tests
-npm run test:watch                 # Watch mode
-npm run test:coverage              # With coverage report
-npx jest path/to/test.spec.js     # Single test file
-
-# Linting
+npm test              # run tests (NOT yet implemented)
 npm run lint          # ESLint check
-npm run lint:fix      # Auto-fix issues
+```
 
-# PM2 (production)
-cd server/
-pm2 start ecosystem.config.js     # Start all services
-pm2 logs project-service          # View logs
-pm2 restart all                   # Restart all
-pm2 stop all                      # Stop all
-pm2 delete all                    # Delete all processes
+### Database Management
+```bash
+# Backup PostgreSQL
+docker exec intime-postgres pg_dump -U intime_admin intime_dev > backup_$(date +%Y%m%d).sql
+
+# Restore backup
+cat backup_20260220.sql | docker exec -i intime-postgres psql -U intime_admin -d intime_dev
 ```
 
 ## Database Conventions
@@ -273,8 +302,30 @@ session:{id}               # Session data (TTL: 24h)
 blacklist:token:{jti}      # Revoked tokens (TTL: 7d)
 ratelimit:login:{ip}       # Login rate limit (TTL: 1min)
 ratelimit:api:{user_id}    # API rate limit (TTL: 1min)
-bull:export-jobs:*          # Bull queue keys
+bull:export-jobs:*         # Bull queue keys
 ```
+
+### Naming Conventions
+
+**Backend:**
+- Controllers: `entity.controller.js` (e.g., `auth.controller.js`, `project.controller.js`)
+- Services: `entity.service.js` (e.g., `auth.service.js`, `timesheet.service.js`)
+- Repositories: `entity.repository.js` (e.g., `user.repository.js`)
+- Models: `Entity.model.js` with PascalCase (e.g., `User.model.js`, `RefreshToken.model.js`)
+- Routes: `entity.routes.js` (e.g., `auth.routes.js`)
+- Middlewares: `descriptive.middleware.js` (e.g., `error.middleware.js`, `auth.middleware.js`)
+
+**Frontend:**
+- Components: `PascalCase.jsx` (e.g., `LoginForm.jsx`, `ProjectCard.jsx`)
+- Pages: `PascalCase.jsx` in `pages/` (e.g., `Dashboard.jsx`, `ProjectList.jsx`)
+- Hooks: `useCamelCase.js` (e.g., `useAuth.js`, `useProjects.js`)
+- Services: `camelCase.js` (e.g., `authService.js`, `projectService.js`)
+- Stores: `camelCaseStore.js` (e.g., `authStore.js`, `projectStore.js`)
+
+**Database:**
+- Tables: `snake_case` plural (e.g., `users`, `refresh_tokens`, `project_allocations`)
+- Columns: `snake_case` (e.g., `user_id`, `created_at`, `refresh_token`)
+- Foreign keys: `{table_singular}_id` (e.g., `user_id`, `project_id`)
 
 ## Database Configuration
 
@@ -362,60 +413,498 @@ Winston structured JSON logs with fields: `timestamp`, `level`, `service`, `envi
 ## Key Architectural Decisions
 
 1. **Shared PostgreSQL** instead of database-per-service — avoids distributed transaction complexity, enables efficient cross-domain queries
-2. **React Query + Zustand** instead of Redux — 90% server state, 10% client state
+2. **React Query + Zustand** (planned) instead of Redux — 90% server state, 10% client state
 3. **Sequelize** over Prisma — team familiarity, mature transaction support
 4. **JWT** over sessions — stateless, horizontally scalable
 5. **Redis Pub/Sub** over RabbitMQ — simpler, Redis already in stack; migrate to Kafka if volume exceeds 10M msgs/day
+6. **Docker Compose** over Kubernetes — simpler for single-VM deployment, can migrate to K8s later if needed
+7. **Nginx subpath routing** (`/intime/`) — VM hosts multiple projects, each on different subpaths
+8. **Centralized `.env`** — single `server/.env` feeds all 10 microservices via build args and environment variables
+
+## Critical Implementation Notes
+
+### Database Connection Pattern
+
+All microservices use the **shared factory pattern** for Sequelize:
+
+```javascript
+// server/shared/config/database.js
+export function createSequelizeInstance(serviceName, options = {})
+
+// server/services/*/src/config/database.js
+import { createSequelizeInstance } from '../../../../shared/config/database.js'
+export const sequelize = createSequelizeInstance('service-name')
+```
+
+This ensures:
+- Consistent connection pooling (max: 5, min: 0 by default)
+- Environment variable validation (fails fast if missing `DB_HOST`, `DB_PASSWORD`, etc.)
+- Service-specific logging with service name prefix
+- Optional overrides (e.g., `financial-service` uses `pool: { max: 10 }`)
+
+### Docker Build Context
+
+All backend Dockerfiles use `context: ./server` in docker-compose.yml to access `shared/`:
+
+```yaml
+services:
+  auth-service:
+    build:
+      context: ./server              # ← CRITICAL: allows access to shared/
+      dockerfile: services/auth-service/Dockerfile
+```
+
+Without this, imports like `../../../../shared/config/database.js` would fail during build.
+
+### Error Handling Philosophy
+
+All services use the `AppError` hierarchy from `server/shared/errors/AppError.js`:
+
+- `ValidationError` (400) — invalid input
+- `UnauthorizedError` (401) — missing/invalid authentication
+- `ForbiddenError` (403) — insufficient permissions
+- `NotFoundError` (404) — resource doesn't exist
+- `ConflictError` (409) — duplicate data (e.g., email already registered)
+
+Global error middleware distinguishes operational errors (`isOperational: true`) from programming errors (log + 500).
+
+### Next Implementation Steps
+
+**Priority 1: Auth Service** (foundation for all other services)
+1. Create models: `User.model.js`, `RefreshToken.model.js`, `PasswordResetToken.model.js`
+2. Create repositories: `user.repository.js`, `token.repository.js`
+3. Implement `auth.service.js` methods (bcrypt, JWT signing, token rotation)
+4. Create Sequelize migrations for `users` and `refresh_tokens` tables
+5. Add unit tests for service layer
+
+**Priority 2: User Service** (needed for RBAC)
+1. Create models: `User.model.js`, `Role.model.js`, `Permission.model.js`, `UserRole.model.js`
+2. Implement user CRUD + RBAC checking
+3. Create migrations for users, roles, permissions, user_roles tables
+4. Seed initial roles (Admin, Manager, etc.) and permissions
+
+**Priority 3: Frontend Auth Flow**
+1. Install dependencies: `axios`, `zustand`, `react-router-dom`, `react-query`
+2. Create `services/api.js` (Axios instance with JWT interceptors)
+3. Create `services/authService.js` (login, logout, refresh wrappers)
+4. Create `store/authStore.js` (Zustand store with localStorage persistence)
+5. Create `pages/Login.jsx`, `pages/Dashboard.jsx`
+6. Setup protected routes with React Router
+
+**Priority 4: Other Microservices**
+- Implement following the same MVC pattern as auth-service
+- Reuse shared Sequelize factory and error classes
+- Add integration tests hitting actual endpoints
+
+## Common Development Tasks
+
+### Adding a New Model
+
+1. Create model file in service's `models/` directory:
+```javascript
+// server/services/user-service/src/models/User.model.js
+import { DataTypes } from 'sequelize'
+import { sequelize } from '../config/database.js'
+
+export const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: { isEmail: true }
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false
+  }
+}, {
+  tableName: 'users',
+  timestamps: true,
+  underscored: true  // createdAt → created_at
+})
+```
+
+2. Create repository for data access:
+```javascript
+// server/services/user-service/src/repositories/user.repository.js
+import { User } from '../models/User.model.js'
+
+export class UserRepository {
+  async findByEmail(email) {
+    return await User.findOne({ where: { email } })
+  }
+
+  async create(userData) {
+    return await User.create(userData)
+  }
+}
+```
+
+3. Use in service layer:
+```javascript
+// server/services/user-service/src/services/user.service.js
+import { UserRepository } from '../repositories/user.repository.js'
+import { NotFoundError } from '../../../../shared/errors/AppError.js'
+
+export class UserService {
+  constructor() {
+    this.userRepository = new UserRepository()
+  }
+
+  async getUserByEmail(email) {
+    const user = await this.userRepository.findByEmail(email)
+    if (!user) throw new NotFoundError('Usuário não encontrado')
+    return user
+  }
+}
+```
+
+### Adding a New Endpoint
+
+1. Define route:
+```javascript
+// server/services/user-service/src/routes/user.routes.js
+import express from 'express'
+import { UserController } from '../controllers/user.controller.js'
+
+const router = express.Router()
+const userController = new UserController()
+
+router.get('/:id', userController.getUserById)
+router.post('/', userController.createUser)
+
+export default router
+```
+
+2. Create controller:
+```javascript
+// server/services/user-service/src/controllers/user.controller.js
+import { UserService } from '../services/user.service.js'
+
+export class UserController {
+  constructor() {
+    this.userService = new UserService()
+  }
+
+  getUserById = async (req, res, next) => {
+    try {
+      const user = await this.userService.getUserById(req.params.id)
+      res.json({ success: true, data: user })
+    } catch (error) {
+      next(error)  // passes to error middleware
+    }
+  }
+}
+```
+
+3. Register routes in `server.js`:
+```javascript
+import userRoutes from './routes/user.routes.js'
+app.use('/api/v1/users', userRoutes)
+```
+
+4. Update API Gateway proxy (if new service):
+```javascript
+// server/api-gateway/src/routes/index.js
+app.use('/api/v1/users', createProxyMiddleware({
+  target: process.env.USER_SERVICE_URL,
+  changeOrigin: true
+}))
+```
+
+### Running Database Migrations (when implemented)
+
+```bash
+# Create migration
+npx sequelize-cli migration:generate --name create-users-table
+
+# Run migrations
+npx sequelize-cli db:migrate
+
+# Rollback
+npx sequelize-cli db:migrate:undo
+```
+
+### Testing a Microservice Independently
+
+```bash
+# Option 1: Via API Gateway (through Docker)
+curl http://localhost:8500/intime/api/v1/auth/health
+
+# Option 2: Direct to service (only if running locally, not in Docker)
+curl http://localhost:3001/api/v1/auth/health
+
+# Option 3: From inside Docker network
+docker exec -it intime-api-gateway curl http://auth-service:3001/api/v1/auth/health
+```
+
+## Troubleshooting
+
+### Service won't start - "Missing environment variables"
+
+**Cause**: Sequelize factory validates required DB env vars at startup.
+
+**Fix**:
+```bash
+# Check if server/.env exists and has all required fields
+cat server/.env | grep DB_
+
+# Required variables:
+# DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+```
+
+### Service won't connect to PostgreSQL
+
+**Symptoms**: `ECONNREFUSED` or `connection timeout`
+
+**Fix**:
+```bash
+# 1. Verify PostgreSQL is running
+docker compose ps postgres
+
+# 2. Check if postgres is healthy
+docker compose ps | grep postgres
+# Should show "(healthy)"
+
+# 3. Test connection manually
+docker exec -it intime-postgres psql -U intime_admin -d intime_dev -c "SELECT 1"
+
+# 4. Check service logs
+docker compose logs -f auth-service
+
+# 5. Verify DB_HOST in docker-compose
+# Inside containers, DB_HOST should be "postgres", not "localhost" or IP
+```
+
+### Nginx returns 502 Bad Gateway
+
+**Cause**: Backend service is not running or not healthy.
+
+**Fix**:
+```bash
+# 1. Check which service is failing
+docker compose ps
+
+# 2. Check logs of the failing service
+docker compose logs -f api-gateway
+
+# 3. Verify service is listening on correct port
+docker exec -it intime-api-gateway netstat -tulpn | grep 3000
+
+# 4. Restart specific service
+docker compose restart api-gateway
+```
+
+### "Cannot find module '../../../../shared/...'"
+
+**Cause**: Dockerfile build context is wrong or `shared/` was not copied.
+
+**Fix**:
+```yaml
+# Verify docker-compose.yml has correct context
+services:
+  auth-service:
+    build:
+      context: ./server          # ← Must be ./server, not ./server/services/auth-service
+      dockerfile: services/auth-service/Dockerfile
+```
+
+### Frontend can't reach API
+
+**Symptoms**: CORS errors or 404 on API calls
+
+**Fix**:
+```bash
+# 1. Check Nginx config - ensure /intime/api/ routes to api-gateway
+docker exec -it intime-nginx cat /etc/nginx/conf.d/default.conf
+
+# 2. Test API Gateway directly
+curl http://localhost:8500/intime/api/v1/health
+
+# 3. Check frontend VITE_API_URL build arg
+# Should be "/intime/api/v1" (relative) not "http://localhost:3000"
+docker inspect intime-client | grep VITE_API_URL
+```
+
+### Redis connection issues
+
+**Fix**:
+```bash
+# 1. Verify Redis is running
+docker compose ps redis
+
+# 2. Test connection
+docker exec -it intime-redis redis-cli ping
+# Should return "PONG"
+
+# 3. Check REDIS_HOST in service
+# Inside containers should be "redis", not "localhost"
+docker compose exec auth-service env | grep REDIS_HOST
+```
+
+### Hot reload not working in development
+
+**Cause**: Nodemon not watching files or Docker volume not mounted.
+
+**Fix**:
+```bash
+# For local development (without Docker), nodemon should work automatically
+cd server/services/auth-service
+npm run dev  # uses nodemon
+
+# For Docker development (requires volume mount):
+# Add to docker-compose.yml:
+volumes:
+  - ./server/services/auth-service/src:/app/services/auth-service/src
+```
+
+### Port conflicts
+
+**Symptoms**: "port already in use" or "address already in use"
+
+**Fix**:
+```bash
+# 1. Check which process is using the port (Windows)
+netstat -ano | findstr :8500
+
+# 2. Check which process is using the port (Linux/Mac)
+lsof -i :8500
+
+# 3. Stop conflicting container
+docker stop <container_name>
+
+# 4. Use different port in .env or docker-compose.yml
+```
+
+## Additional Resources
+
+- **`DEPLOY.md`**: Complete production deployment guide for the VM
+- **`ESTRUTURA_CRIADA.md`**: Detailed breakdown of directory structure
+- **`README.md`**: Quick start guide for developers
+- **`resumo_projeto_intime.md`**: Full architectural specification (2300+ lines)
+- **`UX_UI_guide.md`**: Design system guidelines
+- **`DATABASE_SETUP.md`**: PostgreSQL configuration instructions
+- **`DATABASE_CONNECTION.md`**: PgAdmin connection guide
 
 ## Implementation Status
 
-> **Estado atual**: Projeto em scaffolding inicial (~5-10% implementado)
+> **Estado atual**: Infraestrutura completa (~30% implementado) — Docker, Nginx, API Gateway, e scaffolding de todos os microserviços estão funcionais. Falta implementar a lógica de negócio, modelos, e frontend.
 
-### ✅ Implementado
+### ✅ Infrastructure & DevOps (100%)
 
 | Componente | Status | Detalhes |
 |-----------|--------|----------|
-| API Gateway | ✅ Funcional | Proxy para 10 serviços, rate limiting, CORS, logging |
-| shared/errors | ✅ Completo | `AppError`, `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `ConflictError` |
-| shared/config/database | ✅ Completo | Factory Sequelize com validação de env vars e connection pooling |
-| auth-service/server.js | ✅ Funcional | Express setup, conexão DB, middlewares |
-| auth-service/controllers | ✅ Estrutura | 5 endpoints HTTP (login, logout, refresh, forgot-password, reset-password) |
-| auth-service/routes | ✅ Estrutura | 5 rotas POST definidas |
-| auth-service/middlewares | ✅ Funcional | Global error handler com tratamento de erros JWT |
-| client/services/api.js | ✅ Funcional | Axios com interceptors JWT e refresh token |
-| client/services/authService.js | ✅ Funcional | Wrapper dos métodos de auth |
-| client/store/authStore.js | ✅ Funcional | Zustand store com persistência localStorage |
-| docker-compose.yml | ✅ Funcional | postgres, mongodb, redis, api-gateway, auth-service |
+| docker-compose.yml | ✅ Completo | 13 containers (3 DBs, 1 nginx, 1 client, 1 gateway, 10 services), healthchecks, isolated network |
+| Dockerfiles | ✅ Completo | 12 arquivos (client + api-gateway + 10 services), multi-stage build no frontend |
+| nginx/nginx.conf | ✅ Completo | Reverse proxy configurado: `/intime/` → client, `/intime/api/` → gateway, `/intime/socket.io/` → notifications |
+| server/.env | ✅ Completo | Variáveis centralizadas para todos os serviços (DB, Redis, JWT, URLs) |
+| .env (raiz) | ✅ Completo | `INTIME_DB_PASSWORD` injetado no docker-compose |
 
-### ⚠️ Esqueleto (Estrutura criada, sem implementação)
+### ✅ Shared Libraries (100%)
+
+| Componente | Status | Detalhes |
+|-----------|--------|----------|
+| shared/errors/AppError.js | ✅ Completo | `AppError`, `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `ConflictError` |
+| shared/config/database.js | ✅ Completo | Factory `createSequelizeInstance()` com validação de env vars, connection pooling, logging per-service |
+
+### ✅ API Gateway (100%)
+
+| Componente | Status | Detalhes |
+|-----------|--------|----------|
+| server.js | ✅ Funcional | Express setup, proxy middleware, rate limiting, CORS, error handling |
+| routes/index.js | ✅ Funcional | Proxy configurado para 10 microserviços via `http-proxy-middleware` |
+| middlewares/rateLimit.js | ✅ Funcional | 100 req/min per user |
+| config/logger.js | ✅ Funcional | Winston structured logging |
+
+### ⚠️ Auth Service (30%)
 
 | Componente | Status | O que falta |
 |-----------|--------|-------------|
-| auth-service/services | ⚠️ Stub | `auth.service.js` — todos os métodos lançam `NotImplemented` |
-| auth-service/models | ❌ Ausente | Modelos User, RefreshToken |
-| auth-service/repositories | ❌ Ausente | Camada de acesso a dados |
-| user-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| project-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| timesheet-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| allocation-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| contract-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| financial-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| notification-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| export-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| audit-service | ⚠️ Esqueleto | Apenas `src/config/database.js` |
-| client/App.jsx | ⚠️ Template | Boilerplate padrão Vite — sem páginas, layouts ou roteamento |
+| server.js | ✅ Funcional | Express + Sequelize connection + health endpoint |
+| routes/auth.routes.js | ✅ Estrutura | 5 rotas POST (`/login`, `/logout`, `/refresh-token`, `/forgot-password`, `/reset-password`) |
+| controllers/auth.controller.js | ✅ Estrutura | Handlers chamam service (mas service lança erros) |
+| middlewares/error.middleware.js | ✅ Funcional | Global error handler com tratamento JWT |
+| config/database.js | ✅ Funcional | Usa factory shared |
+| config/redis.js | ✅ Funcional | Redis client configurado |
+| config/logger.js | ✅ Funcional | Winston |
+| services/auth.service.js | ⚠️ TODOs | Todos os 5 métodos lançam `Error('não implementado ainda')` |
+| models/ | ❌ Vazio | Faltam: `User.model.js`, `RefreshToken.model.js`, `PasswordResetToken.model.js` |
+| repositories/ | ❌ Vazio | Faltam: `user.repository.js`, `token.repository.js` |
 
-### ❌ Não implementado
+### ⚠️ Outros Microserviços (10%)
 
-- Modelos Sequelize (nenhum definido)
-- Migrações de banco de dados
-- Sistema RBAC (papéis e permissões)
-- Páginas e componentes do frontend (shadcn/ui não instalado no client)
-- Testes (Jest/Supertest instalados mas sem arquivos de teste)
+Todos os 9 serviços restantes (`user`, `project`, `timesheet`, `allocation`, `contract`, `financial`, `notification`, `export`, `audit`) possuem:
 
-## Known Issues
+| Componente | Status | Detalhes |
+|-----------|--------|----------|
+| Dockerfile | ✅ Completo | Build context `./server`, copia shared/ |
+| server.js | ✅ Skeleton | Express + health endpoint (alguns conectam DB/Redis) |
+| config/database.js | ✅ Funcional | Usa factory shared (exceto notification e audit) |
+| Restante | ❌ Ausente | Sem routes, controllers, services, models, repositories |
 
-- **API Gateway bug**: `server/api-gateway/src/server.js` declara `const app` duas vezes (linha ~10 e ~13)
-- **Client deps**: `client/package.json` não lista axios, zustand, react-router — instalá-los com `npm install`
-- **Auth service stub**: `auth.service.js` lança erros em todos os métodos — implementação pendente
-- **Env centralizado**: `server/.env` contém credenciais reais — não commitar; usar `.env.example` como referência
+**Observação**: `notification-service` usa Redis Pub/Sub e Socket.io (configurado), `audit-service` usa MongoDB (configurado). Ambos aceitam conexões mas não possuem lógica implementada.
+
+### ⚠️ Frontend (5%)
+
+| Componente | Status | Detalhes |
+|-----------|--------|----------|
+| Dockerfile + nginx.conf | ✅ Completo | Multi-stage build, SPA routing configurado |
+| package.json | ⚠️ Mínimo | Apenas `react` e `react-dom` — faltam axios, zustand, react-router, etc. |
+| App.jsx | ⚠️ Boilerplate | Template padrão Vite — contador simples |
+| services/api.js | ❌ Ausente | (existe no plano mas não encontrado no src/) |
+| services/authService.js | ❌ Ausente | (existe no plano mas não encontrado no src/) |
+| store/authStore.js | ❌ Ausente | (existe no plano mas não encontrado no src/) |
+
+### ❌ Não Implementado (0%)
+
+- **Modelos Sequelize/Mongoose** — nenhum definido em nenhum serviço
+- **Repositórios** — camada de acesso a dados ausente
+- **Lógica de negócio** — todos os services lançam erros
+- **Migrações de banco** — schemas não criados
+- **Sistema RBAC** — roles e permissions não implementados
+- **Frontend páginas/componentes** — sem React Router, sem páginas, sem UI library
+- **Testes** — Jest/Supertest instalados mas zero arquivos `.test.js` ou `.spec.js`
+- **WebSocket handlers** — Socket.io configurado mas sem event handlers
+- **Bull queues** — export-service não possui jobs definidos
+
+## Deployment Configuration
+
+### VM Production Setup
+
+- **URL**: http://interno.sandech.local:8500/intime/
+- **PostgreSQL**: Port 5433 on host (5432 internal) — **SEPARATE** from `worklocation-db` on port 5432
+- **MongoDB**: Port 27017 (shared with VM, no conflicts)
+- **Redis**: Port 6379 (shared with VM, no conflicts)
+- **Network**: `intime-network` (isolated bridge) — no cross-project access
+
+### Port Map
+
+| Host Port | Internal Port | Service | Accessibility |
+|-----------|---------------|---------|---------------|
+| 8500 | 80 | nginx | Public entry point |
+| 5433 | 5432 | intime-postgres | External (PgAdmin) |
+| 27017 | 27017 | intime-mongodb | External (Compass) |
+| 6379 | 6379 | intime-redis | External (RedisInsight) |
+| — | 3000 | api-gateway | Internal only (via nginx) |
+| — | 3001-3010 | microservices | Internal only (via gateway) |
+| — | 80 | client | Internal only (via nginx) |
+
+### Environment Variables
+
+**`.env` (project root):**
+```env
+INTIME_DB_PASSWORD=<strong_password>
+```
+
+**`server/.env` (all microservices):**
+- `DB_HOST`, `DB_USER`, `DB_PASSWORD` — overridden by docker-compose for containers
+- `JWT_SECRET` — must be set before first deploy
+- `REDIS_HOST` — overridden to `redis` in docker-compose
+- Service URLs — overridden to internal container names in docker-compose
+
+See `DEPLOY.md` for complete deployment instructions.

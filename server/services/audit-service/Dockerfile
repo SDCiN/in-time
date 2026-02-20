@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Build context: ./server
 # audit-service usa MongoDB (Mongoose) — não depende do shared/Sequelize factory

@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Build context: ./server
 # notification-service usa Socket.io + Redis Pub/Sub (não depende de shared/Sequelize)

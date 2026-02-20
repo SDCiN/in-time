@@ -47,11 +47,11 @@ x-backend-base: &backend-base
 services:
 
   # ---------------------------------------------------------------------------
-  # Banco de dados - PostgreSQL
+  # Banco de dados - PostgreSQL 16
   # ---------------------------------------------------------------------------
   postgres:
     <<: *service-base
-    image: postgres:14-alpine
+    image: postgres:16-alpine
     container_name: intime-postgres
     environment:
       POSTGRES_DB: intime_dev
@@ -70,11 +70,11 @@ services:
       start_period: 15s
 
   # ---------------------------------------------------------------------------
-  # Banco de dados - MongoDB (Audit Logs)
+  # Banco de dados - MongoDB 7.0 (Audit Logs)
   # ---------------------------------------------------------------------------
   mongodb:
     <<: *service-base
-    image: mongo:4.4
+    image: mongo:7.0
     container_name: intime-mongodb
     environment:
       MONGO_INITDB_DATABASE: intime_audit
@@ -83,18 +83,18 @@ services:
     volumes:
       - mongodb_data:/data/db
     healthcheck:
-      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
 
   # ---------------------------------------------------------------------------
-  # Banco de dados - Redis (Cache / Pub-Sub / Sessões)
+  # Banco de dados - Redis 7.4 (Cache / Pub-Sub / Sessões)
   # ---------------------------------------------------------------------------
   redis:
     <<: *service-base
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: intime-redis
     command: redis-server --appendonly yes
     ports:

@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Build context: ./server
 # shared/ é necessário para imports relativos (../../../../shared/...)
