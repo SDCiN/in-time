@@ -1,36 +1,38 @@
 import express from 'express'
-import mongoose from 'mongoose'
 import cors from 'cors'
 import helmet from 'helmet'
 import dotenv from 'dotenv'
+import { sequelize } from './config/database.js'
 
-dotenv.config()
+dotenv.config({ path: '../../.env' })
 
 const app = express()
 const PORT = process.env.AUDIT_SERVICE_PORT || 3010
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongodb:27017/intime_audit'
 
 app.use(helmet())
 app.use(cors())
 app.use(express.json())
 
-// Conexão MongoDB
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Audit Service conectado ao MongoDB'))
-  .catch(err => console.error('Erro ao conectar MongoDB:', err.message))
+// Health check
+app.get('/health', async (req, res) => {
+  let dbStatus = 'disconnected'
+  try {
+    await sequelize.authenticate()
+    dbStatus = 'connected'
+  } catch {
+    dbStatus = 'disconnected'
+  }
 
-app.get('/health', (req, res) => {
-  const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   res.json({
     status: 'ok',
     service: 'audit-service',
-    mongodb: mongoStatus,
+    database: dbStatus,
     timestamp: new Date().toISOString()
   })
 })
 
 // Placeholder – implementação pendente
-// Quando implementado: logs imutáveis append-only em MongoDB time-series
+// Quando implementado: logs imutáveis append-only em PostgreSQL com JSONB
 app.use('/api/v1', (req, res) => {
   res.status(501).json({
     success: false,
@@ -39,8 +41,27 @@ app.use('/api/v1', (req, res) => {
   })
 })
 
-app.listen(PORT, () => {
-  console.log(`Audit Service rodando na porta ${PORT}`)
-})
+// Database connection e start server
+const startServer = async () => {
+  try {
+    await sequelize.authenticate()
+    console.log('Audit Service conectado ao PostgreSQL')
+
+    // Sync models (apenas em desenvolvimento)
+    if (process.env.NODE_ENV === 'development') {
+      await sequelize.sync({ alter: false })
+      console.log('Database synced')
+    }
+
+    app.listen(PORT, () => {
+      console.log(`Audit Service rodando na porta ${PORT}`)
+    })
+  } catch (error) {
+    console.error('Erro ao conectar PostgreSQL:', error.message)
+    process.exit(1)
+  }
+}
+
+startServer()
 
 export default app

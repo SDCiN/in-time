@@ -1,8 +1,7 @@
 FROM node:20-alpine
 
 # Build context: ./server
-# audit-service usa MongoDB (Mongoose) — não depende do shared/Sequelize factory
-# mas incluímos shared para uso futuro (AppError, logger, etc.)
+# audit-service usa PostgreSQL (Sequelize) + shared/
 
 COPY shared/package*.json /app/shared/
 RUN cd /app/shared && npm install --omit=dev

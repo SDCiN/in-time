@@ -6,6 +6,7 @@
 # Este arquivo é para PRODUÇÃO
 # - Todos os microserviços são expostos apenas via Nginx (porta 8500)
 # - PostgreSQL dedicado na porta 5433 (não confundir com worklocation-db:5432)
+# - Redis 7.4 para cache, sessions e pub/sub
 # - Rede intime-network isolada dos demais projetos da VM
 # =============================================================================
 
@@ -68,26 +69,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-
-  # ---------------------------------------------------------------------------
-  # Banco de dados - MongoDB 7.0 (Audit Logs)
-  # ---------------------------------------------------------------------------
-  mongodb:
-    <<: *service-base
-    image: mongo:7.0
-    container_name: intime-mongodb
-    environment:
-      MONGO_INITDB_DATABASE: intime_audit
-    ports:
-      - "27017:27017"         # Exposto para acesso direto (Compass, mongosh)
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
 
   # ---------------------------------------------------------------------------
   # Banco de dados - Redis 7.4 (Cache / Pub-Sub / Sessões)
@@ -292,19 +273,12 @@ services:
       start_period: 40s
 
   audit-service:
-    <<: *service-base
+    <<: *backend-base
     build:
       context: ./server
       dockerfile: services/audit-service/Dockerfile
     image: intime-audit-service:latest
     container_name: intime-audit-service
-    env_file:
-      - ./server/.env
-    environment:
-      - MONGODB_URI=mongodb://mongodb:27017/intime_audit
-    depends_on:
-      mongodb:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3010/health"]
       interval: 30s
@@ -352,7 +326,6 @@ services:
 # =============================================================================
 volumes:
   postgres_data:
-  mongodb_data:
   redis_data:
 
 # =============================================================================

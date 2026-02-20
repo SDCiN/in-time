@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Architecture Type**: Client-Server with MVC + Middlewares + Microservices
 - **Frontend (Client)**: React 19.2 with JavaScript (NOT TypeScript) — SPA in `client/` directory
-- **Backend (Server)**: Node.js 18 LTS with JavaScript (NOT TypeScript) — microservices in `server/` directory
+- **Backend (Server)**: Node.js 20 LTS with JavaScript (NOT TypeScript) — microservices in `server/` directory
 - **Language**: All code in JavaScript; documentation and UI text in Portuguese (pt-BR)
 - **Deployment**: Docker Compose with isolated network, Nginx reverse proxy on port 8500
 
@@ -43,7 +43,7 @@ intime/
 │   │   │   │   ├── controllers/  # HTTP request handlers
 │   │   │   │   ├── services/     # Business logic
 │   │   │   │   ├── repositories/ # Database access
-│   │   │   │   ├── models/       # Sequelize/Mongoose models
+│   │   │   │   ├── models/       # Sequelize models
 │   │   │   │   ├── middlewares/  # Service-specific middlewares
 │   │   │   │   ├── utils/        # Helpers, validators
 │   │   │   │   └── server.js
@@ -118,7 +118,7 @@ Schema definition, validations, associations
 | FINANCIAL-SERVICE | 3007 | EVM metrics (PV, EV, AC, CPI, SPI, etc.), forecasting, burn-rate (read-only DB access, cron every 15min, Redis cache TTL 15min) |
 | NOTIFICATION-SERVICE | 3008 | Real-time WebSocket (Socket.io + Redis Pub/Sub), email queue (Nodemailer) |
 | EXPORT-SERVICE | 3009 | Async report generation via Bull Queue (Excel/CSV/PDF/JSON), S3 upload |
-| AUDIT-SERVICE | 3010 | Immutable append-only logs in MongoDB time-series |
+| AUDIT-SERVICE | 3010 | Immutable append-only logs in PostgreSQL JSONB |
 
 ### Layer Responsibilities
 
@@ -168,7 +168,7 @@ Schema definition, validations, associations
 #### **Repository**
 ```javascript
 // Data access layer
-✅ Sequelize/Mongoose queries
+✅ Sequelize queries
 ✅ CRUD operations
 ✅ Filters, pagination, sorting
 ✅ Complex joins and aggregations
@@ -182,7 +182,7 @@ Schema definition, validations, associations
 #### **Model**
 ```javascript
 // Schema definition layer
-✅ Sequelize.define() / mongoose.Schema()
+✅ Sequelize.define()
 ✅ Field types, constraints
 ✅ Associations (hasMany, belongsTo)
 ✅ Hooks (beforeCreate, afterUpdate)
@@ -204,11 +204,10 @@ Schema definition, validations, associations
 
 **Frontend**: React 19.2 + Vite 7 (dependencies: react-dom only — NOT yet installed: router, query, zustand, shadcn, axios, etc.)
 
-**Backend**: Node.js 20 LTS, Express.js 4.21, Sequelize 6.37.7 (PostgreSQL), Mongoose 8.9 (MongoDB), redis client 4.7, jsonwebtoken 9, bcryptjs 2, helmet 8.2, cors 2, express-rate-limit 7, Joi 17, Socket.io 4.8, Bull 4.16, Winston 3.19
+**Backend**: Node.js 20 LTS, Express.js 4.21, Sequelize 6.37.7 (PostgreSQL), redis client 4.7, jsonwebtoken 9, bcryptjs 2, helmet 8.1, cors 2, express-rate-limit 7, Joi 17, Socket.io 4.8, Bull 4.16, Winston 3.19
 
 **Databases**:
-- PostgreSQL 16 (transactional data) — dedicated instance `intime-postgres` on port 5433, user `intime_admin`, database `intime_dev`
-- MongoDB 7.0 (audit logs) — port 27017
+- PostgreSQL 16 (transactional data + audit logs via JSONB) — dedicated instance `intime-postgres` on port 5433, user `intime_admin`, database `intime_dev`
 - Redis 7.4 (cache, sessions, pub/sub, queues) — port 6379
 
 **Infrastructure**:
@@ -258,7 +257,7 @@ npm run lint          # ESLint check
 
 ### Backend - Manual Development (without Docker)
 ```bash
-# Prerequisites: PostgreSQL, MongoDB, Redis running locally or on VM
+# Prerequisites: PostgreSQL and Redis running locally or on VM (use dev-db-start.ps1)
 
 # API Gateway
 cd server/api-gateway/
@@ -799,7 +798,7 @@ docker stop <container_name>
 
 | Componente | Status | Detalhes |
 |-----------|--------|----------|
-| docker-compose.yml | ✅ Completo | 13 containers (3 DBs, 1 nginx, 1 client, 1 gateway, 10 services), healthchecks, isolated network |
+| docker-compose.yml | ✅ Completo | 12 containers (2 DBs, 1 nginx, 1 client, 1 gateway, 10 services), healthchecks, isolated network |
 | Dockerfiles | ✅ Completo | 12 arquivos (client + api-gateway + 10 services), multi-stage build no frontend |
 | nginx/nginx.conf | ✅ Completo | Reverse proxy configurado: `/intime/` → client, `/intime/api/` → gateway, `/intime/socket.io/` → notifications |
 | server/.env | ✅ Completo | Variáveis centralizadas para todos os serviços (DB, Redis, JWT, URLs) |
@@ -844,10 +843,10 @@ Todos os 9 serviços restantes (`user`, `project`, `timesheet`, `allocation`, `c
 |-----------|--------|----------|
 | Dockerfile | ✅ Completo | Build context `./server`, copia shared/ |
 | server.js | ✅ Skeleton | Express + health endpoint (alguns conectam DB/Redis) |
-| config/database.js | ✅ Funcional | Usa factory shared (exceto notification e audit) |
+| config/database.js | ✅ Funcional | Usa factory shared (exceto notification) |
 | Restante | ❌ Ausente | Sem routes, controllers, services, models, repositories |
 
-**Observação**: `notification-service` usa Redis Pub/Sub e Socket.io (configurado), `audit-service` usa MongoDB (configurado). Ambos aceitam conexões mas não possuem lógica implementada.
+**Observação**: `notification-service` usa Redis Pub/Sub e Socket.io (configurado), `audit-service` usa PostgreSQL JSONB (configurado). Ambos aceitam conexões mas não possuem lógica implementada.
 
 ### ⚠️ Frontend (5%)
 
@@ -862,7 +861,7 @@ Todos os 9 serviços restantes (`user`, `project`, `timesheet`, `allocation`, `c
 
 ### ❌ Não Implementado (0%)
 
-- **Modelos Sequelize/Mongoose** — nenhum definido em nenhum serviço
+- **Modelos Sequelize** — nenhum definido em nenhum serviço
 - **Repositórios** — camada de acesso a dados ausente
 - **Lógica de negócio** — todos os services lançam erros
 - **Migrações de banco** — schemas não criados
@@ -878,7 +877,6 @@ Todos os 9 serviços restantes (`user`, `project`, `timesheet`, `allocation`, `c
 
 - **URL**: http://interno.sandech.local:8500/intime/
 - **PostgreSQL**: Port 5433 on host (5432 internal) — **SEPARATE** from `worklocation-db` on port 5432
-- **MongoDB**: Port 27017 (shared with VM, no conflicts)
 - **Redis**: Port 6379 (shared with VM, no conflicts)
 - **Network**: `intime-network` (isolated bridge) — no cross-project access
 
@@ -888,7 +886,6 @@ Todos os 9 serviços restantes (`user`, `project`, `timesheet`, `allocation`, `c
 |-----------|---------------|---------|---------------|
 | 8500 | 80 | nginx | Public entry point |
 | 5433 | 5432 | intime-postgres | External (PgAdmin) |
-| 27017 | 27017 | intime-mongodb | External (Compass) |
 | 6379 | 6379 | intime-redis | External (RedisInsight) |
 | — | 3000 | api-gateway | Internal only (via nginx) |
 | — | 3001-3010 | microservices | Internal only (via gateway) |
