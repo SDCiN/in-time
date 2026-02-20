@@ -12,6 +12,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Language**: All code in JavaScript; documentation and UI text in Portuguese (pt-BR)
 - **Deployment**: Docker Compose with isolated network, Nginx reverse proxy on port 8500
 
+## Quick Command Reference
+
+**Most Common Commands:**
+```bash
+# Start all services (Docker)
+docker compose up -d --build
+
+# View all logs
+docker compose logs -f
+
+# View specific service logs
+docker compose logs -f auth-service
+
+# Test database connection
+cd server/ && npm run test-db
+
+# Rebuild specific service
+docker compose up -d --build auth-service
+
+# Access PostgreSQL CLI
+docker exec -it intime-postgres psql -U intime_admin -d intime_dev
+
+# Stop all services
+docker compose down
+
+# Reinstall all dependencies (Windows)
+reinstall-deps.bat
+```
+
+**Development (local without Docker):**
+```bash
+# Frontend
+cd client/
+npm install
+npm run dev           # http://localhost:5173
+
+# Backend - API Gateway
+cd server/api-gateway/
+npm install
+npm run dev           # http://localhost:3000
+
+# Backend - Auth Service (example)
+cd server/services/auth-service/
+npm install
+npm run dev           # http://localhost:3001
+```
+
 ## Directory Structure
 
 ```
@@ -280,6 +327,19 @@ docker exec intime-postgres pg_dump -U intime_admin intime_dev > backup_$(date +
 
 # Restore backup
 cat backup_20260220.sql | docker exec -i intime-postgres psql -U intime_admin -d intime_dev
+```
+
+### Utility Scripts
+```bash
+# Reinstall all dependencies across all services (Windows)
+reinstall-deps.bat        # Located at project root
+
+# Test database connection (from server/ directory)
+cd server/
+npm run test-db          # Verifies PostgreSQL connection from server/.env
+
+# Check all services status
+docker compose ps
 ```
 
 ## Database Conventions

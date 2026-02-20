@@ -6,9 +6,9 @@ Sistema enterprise de gestão de projetos com foco em gestão de recursos, contr
 
 **Client-Server com Microserviços**
 
-- **Frontend**: React 18 + JavaScript (Vite)
-- **Backend**: Node.js + JavaScript (Express.js)
-- **Bancos de Dados**: PostgreSQL, MongoDB, Redis
+- **Frontend**: React 19.2 + JavaScript (Vite 7)
+- **Backend**: Node.js 20 LTS + JavaScript (Express.js)
+- **Bancos de Dados**: PostgreSQL 16, Redis 7.4
 
 ### Estrutura
 
@@ -49,7 +49,6 @@ intime/
 - Node.js 20 LTS
 - Docker & Docker Compose
 - PostgreSQL 16 (provisionado via Docker)
-- MongoDB 7.0 (provisionado via Docker)
 - Redis 7.4 (provisionado via Docker)
 
 ### Instalação
@@ -193,8 +192,8 @@ docker-compose ps                 # Status dos containers
 ## Tecnologias
 
 ### Frontend
-- React 18
-- Vite 4
+- React 19.2
+- Vite 7
 - React Router 6
 - React Query 5 (TanStack Query)
 - Zustand 4
@@ -206,7 +205,6 @@ docker-compose ps                 # Status dos containers
 - Node.js 20 LTS
 - Express.js 4.21
 - Sequelize 6.37.7 (PostgreSQL ORM)
-- Mongoose 8.9 (MongoDB ODM)
 - Redis client 4.7
 - Redis 7.4
 - JWT (jsonwebtoken)

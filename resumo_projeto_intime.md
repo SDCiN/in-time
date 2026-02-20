@@ -55,7 +55,7 @@ O **iN!Time** é um sistema enterprise de gestão de projetos com foco em:
 │                        CLIENT LAYER                             │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │  React 18 SPA + Vite                                     │  │
+│  │  React 19.2 SPA + Vite 7                                 │  │
 │  │  • React Router 6 (SPA routing)                          │  │
 │  │  • React Query (server state)                            │  │
 │  │  • Zustand (client state)                                │  │
@@ -97,10 +97,10 @@ O **iN!Time** é um sistema enterprise de gestão de projetos com foco em:
                         │
        ┌────────────────┼────────────────┐
        │                │                │
-  ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
-  │PostgreSQL│    │  Redis  │     │ MongoDB │
-  │ Primary │     │ Cluster │     │ Cluster │
-  └────┬────┘     └─────────┘     └─────────┘
+  ┌────▼────┐     ┌────▼────┐
+  │PostgreSQL│    │  Redis  │
+  │ Primary │     │ Cluster │
+  └────┬────┘     └─────────┘
        │
   ┌────▼────┐
   │PostgreSQL│
@@ -395,7 +395,7 @@ GET    /api/v1/notifications/unread-count
 WS     /socket.io (real-time)
 ```
 
-**Dados Gerenciados** (MongoDB):
+**Dados Gerenciados** (PostgreSQL JSONB):
 - `notifications`
 - `notification_preferences`
 - `email_queue`
@@ -425,7 +425,7 @@ GET    /api/v1/exports/history
 DELETE /api/v1/exports/:jobId
 ```
 
-**Dados Gerenciados** (MongoDB):
+**Dados Gerenciados** (PostgreSQL JSONB):
 - `export_jobs` (status: pending, processing, completed, failed)
 - `export_history`
 
@@ -460,7 +460,7 @@ GET    /api/v1/audit/user/:userId/actions
 GET    /api/v1/audit/export
 ```
 
-**Dados Gerenciados** (MongoDB - time-series):
+**Dados Gerenciados** (PostgreSQL JSONB - append-only):
 - `audit_logs`
 
 **Campos de Auditoria**:
@@ -610,8 +610,8 @@ GET    /api/v1/audit/export
 
 | Categoria | Tecnologia | Versão | Justificativa |
 |-----------|-----------|--------|---------------|
-| **Framework** | React | 18.x | Componentes, hooks, concurrent rendering |
-| **Build Tool** | Vite | 4.x | HMR rápido, builds otimizados |
+| **Framework** | React | 19.2 | Componentes, hooks, concurrent rendering |
+| **Build Tool** | Vite | 7.x | HMR rápido, builds otimizados |
 | **Routing** | React Router | 6.x | SPA navigation, lazy loading |
 | **Server State** | React Query | 5.x | Cache, invalidação, background sync |
 | **Client State** | Zustand | 4.x | Leve, simples, type-safe |
@@ -626,10 +626,9 @@ GET    /api/v1/audit/export
 
 | Categoria | Tecnologia | Versão | Justificativa |
 |-----------|-----------|--------|---------------|
-| **Runtime** | Node.js | 18 LTS | Estável, suporte até 2025 |
+| **Runtime** | Node.js | 20 LTS | Estável, suporte até 2026 |
 | **Framework** | Express.js | 4.x | Minimalista, maduro, ecosystem |
 | **ORM** | Sequelize | 6.x | PostgreSQL, migrations, associations |
-| **ODM** | Mongoose | 7.x | MongoDB, schemas, validations |
 | **Process Manager** | PM2 | 5.x | Cluster mode, auto-restart |
 | **Authentication** | jsonwebtoken | 9.x | JWT generation/validation |
 | **Security** | helmet + cors | 7.x + 2.x | Headers, CORS config |
@@ -644,9 +643,8 @@ GET    /api/v1/audit/export
 
 | Tipo | Tecnologia | Versão | Uso |
 |------|-----------|--------|-----|
-| **Relacional** | PostgreSQL | 14.x | Dados transacionais, EVM |
-| **NoSQL** | MongoDB | 6.x | Logs, notificações, exports |
-| **Cache** | Redis | 7.x | Cache, sessions, pub/sub, queues |
+| **Relacional** | PostgreSQL | 16.x | Dados transacionais, EVM, audit logs (JSONB) |
+| **Cache** | Redis | 7.4 | Cache, sessions, pub/sub, queues |
 
 ### Infrastructure
 
@@ -1354,67 +1352,64 @@ CREATE TABLE timesheets_2026 PARTITION OF timesheets
 
 ---
 
-### MongoDB (Logs e Notificações)
+### PostgreSQL JSONB (Logs, Notificações e Exports)
 
-**Collections**:
+**Tables with JSONB columns**:
 
-```javascript
-// audit_logs (time-series collection)
-{
-  timestamp: ISODate("2026-02-12T14:30:00Z"),
-  userId: "uuid",
-  action: "CREATE",
-  entityType: "project",
-  entityId: "uuid",
-  changes: {
-    name: { old: null, new: "Project Alpha" },
-    budget: { old: null, new: 100000 }
-  },
-  ipAddress: "192.168.1.100",
-  userAgent: "Mozilla/5.0..."
-}
+```sql
+-- audit_logs (append-only com JSONB)
+CREATE TABLE audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  timestamp TIMESTAMP DEFAULT NOW(),
+  user_id UUID REFERENCES users(id),
+  action VARCHAR(50) NOT NULL,
+  entity_type VARCHAR(50) NOT NULL,
+  entity_id UUID,
+  changes JSONB,  -- { "field": { "old": value, "new": value } }
+  ip_address INET,
+  user_agent TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-// Indexes
-db.audit_logs.createIndex({ timestamp: -1 });
-db.audit_logs.createIndex({ entityType: 1, entityId: 1 });
-db.audit_logs.createIndex({ userId: 1, timestamp: -1 });
+-- Indexes
+CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
+CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX idx_audit_logs_user ON audit_logs(user_id, timestamp DESC);
+CREATE INDEX idx_audit_logs_changes ON audit_logs USING GIN(changes);
 
-// notifications
-{
-  _id: ObjectId("..."),
-  userId: "uuid",
-  type: "project_created",
-  title: "New Project Created",
-  message: "Project 'Alpha' has been created",
-  read: false,
-  readAt: null,
-  metadata: {
-    projectId: "uuid",
-    projectName: "Alpha"
-  },
-  createdAt: ISODate("2026-02-12T14:30:00Z")
-}
+-- notifications
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  type VARCHAR(50) NOT NULL,
+  title VARCHAR(255),
+  message TEXT,
+  read BOOLEAN DEFAULT FALSE,
+  read_at TIMESTAMP,
+  metadata JSONB,  -- { "projectId": "uuid", "projectName": "Alpha" }
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-// Indexes
-db.notifications.createIndex({ userId: 1, read: 1, createdAt: -1 });
-db.notifications.createIndex({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 dias TTL
+-- Indexes
+CREATE INDEX idx_notifications_user_read ON notifications(user_id, read, created_at DESC);
 
-// export_jobs
-{
-  _id: ObjectId("..."),
-  userId: "uuid",
-  status: "completed",  // pending, processing, completed, failed
-  type: "excel",
-  filters: { ... },
-  downloadUrl: "https://s3.../reports/xyz.xlsx",
-  createdAt: ISODate("..."),
-  completedAt: ISODate("..."),
-  expiresAt: ISODate("...")  // 7 dias após criação
-}
+-- export_jobs
+CREATE TABLE export_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  status VARCHAR(20) DEFAULT 'pending',  -- pending, processing, completed, failed
+  type VARCHAR(20),  -- excel, csv, pdf, json
+  filters JSONB,
+  download_url TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP,
+  expires_at TIMESTAMP  -- 7 dias após criação
+);
 
-// Index
-db.export_jobs.createIndex({ userId: 1, createdAt: -1 });
-db.export_jobs.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // Auto-delete
+-- Indexes
+CREATE INDEX idx_export_jobs_user ON export_jobs(user_id, created_at DESC);
+CREATE INDEX idx_export_jobs_expires ON export_jobs(expires_at) WHERE expires_at IS NOT NULL;
 ```
 
 ---
@@ -1489,9 +1484,9 @@ sentinel-3:
 
 | Ambiente | Objetivo | Database | Infraestrutura |
 |----------|----------|----------|----------------|
-| **Development** | Desenvolvimento local | PostgreSQL local, MongoDB local, Redis local | Docker Compose |
-| **Staging** | Testes e QA | PostgreSQL RDS, MongoDB Atlas, Redis ElastiCache | AWS ECS / K8s |
-| **Production** | Produção | PostgreSQL RDS Multi-AZ, MongoDB Atlas Cluster, Redis ElastiCache Cluster | AWS EKS (Kubernetes) |
+| **Development** | Desenvolvimento local | PostgreSQL local, Redis local | Docker Compose |
+| **Staging** | Testes e QA | PostgreSQL RDS, Redis ElastiCache | AWS ECS / K8s |
+| **Production** | Produção | PostgreSQL RDS Multi-AZ, Redis ElastiCache Cluster | AWS EKS (Kubernetes) |
 
 ---
 
@@ -1503,25 +1498,18 @@ version: '3.8'
 services:
   # Databases
   postgres:
-    image: postgres:14-alpine
+    image: postgres:16-alpine
     environment:
       POSTGRES_DB: intime_dev
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: intime_admin
+      POSTGRES_PASSWORD: ${INTIME_DB_PASSWORD}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-  
-  mongodb:
-    image: mongo:6
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-  
+
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     ports:
       - "6379:6379"
   
@@ -1564,7 +1552,6 @@ services:
 
 volumes:
   postgres_data:
-  mongodb_data:
 ```
 
 ---
